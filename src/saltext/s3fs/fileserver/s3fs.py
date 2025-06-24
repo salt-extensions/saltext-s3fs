@@ -91,6 +91,7 @@ import datetime
 import logging
 import os
 import pickle
+import pprint
 import time
 import urllib.parse
 
@@ -99,6 +100,7 @@ import salt.modules
 import salt.utils.files
 import salt.utils.gzip_util
 import salt.utils.hashutils
+import salt.utils.s3
 import salt.utils.versions
 
 log = logging.getLogger(__name__)
@@ -132,16 +134,12 @@ def update():
             for bucket_files in _find_files(env_meta):
                 for bucket, files in bucket_files.items():
                     for file_path in files:
-                        cached_file_path = _get_cached_file_name(
-                            bucket, saltenv, file_path
-                        )
+                        cached_file_path = _get_cached_file_name(bucket, saltenv, file_path)
 
                         log.debug("%s - %s : %s", bucket, saltenv, file_path)
 
                         # load the file from S3 if it's not in the cache or it's old
-                        _get_file_from_s3(
-                            metadata, saltenv, bucket, file_path, cached_file_path
-                        )
+                        _get_file_from_s3(metadata, saltenv, bucket, file_path, cached_file_path)
 
         log.info("Sync local cache from S3 completed.")
 
@@ -205,9 +203,7 @@ def file_hash(load, fnd):
     if "path" not in fnd or "bucket" not in fnd or not fnd["path"]:
         return ret
 
-    cached_file_path = _get_cached_file_name(
-        fnd["bucket"], load["saltenv"], fnd["path"]
-    )
+    cached_file_path = _get_cached_file_name(fnd["bucket"], load["saltenv"], fnd["path"])
 
     if os.path.isfile(cached_file_path):
         ret["hash_type"] = S3_HASH_TYPE
@@ -235,9 +231,7 @@ def serve_file(load, fnd):
     gzip = load.get("gzip", None)
 
     # get the saltenv/path file from the cache
-    cached_file_path = _get_cached_file_name(
-        fnd["bucket"], load["saltenv"], fnd["path"]
-    )
+    cached_file_path = _get_cached_file_name(fnd["bucket"], load["saltenv"], fnd["path"])
 
     ret["dest"] = _trim_env_off_path([fnd["path"]], load["saltenv"])[0]
 
@@ -279,14 +273,14 @@ def file_list(load):
     return ret
 
 
-def file_list_emptydirs(load):
-    """
-    Return a list of all empty directories on the master
-    """
-    # TODO - implement this
-    _init()
-
-    return []
+# def file_list_emptydirs(load):
+#    """
+#    Return a list of all empty directories on the master
+#    """
+#    # TODO - implement this
+#    _init()
+#
+#    return []
 
 
 def dir_list(load):
@@ -331,9 +325,7 @@ def _get_s3_key():
     kms_keyid = __opts__["aws.kmw.keyid"] if "aws.kms.keyid" in __opts__ else None
     location = __opts__["s3.location"] if "s3.location" in __opts__ else None
     path_style = __opts__["s3.path_style"] if "s3.path_style" in __opts__ else None
-    https_enable = (
-        __opts__["s3.https_enable"] if "s3.https_enable" in __opts__ else None
-    )
+    https_enable = __opts__["s3.https_enable"] if "s3.https_enable" in __opts__ else None
 
     return (
         key,
@@ -410,7 +402,7 @@ def _refresh_buckets_cache_file(cache_file):
         keyid,
         service_url,
         verify_ssl,
-        kms_keyid,
+        _,
         location,
         path_style,
         https_enable,
@@ -422,7 +414,7 @@ def _refresh_buckets_cache_file(cache_file):
     def __get_s3_meta(bucket, key=key, keyid=keyid):
         ret, marker = [], ""
         while True:
-            tmp = __utils__["s3.query"](
+            tmp = salt.utils.s3.query(
                 key=key,
                 keyid=keyid,
                 kms_keyid=keyid,
@@ -441,9 +433,7 @@ def _refresh_buckets_cache_file(cache_file):
                     break
                 headers.append(header)
             ret.extend(tmp)
-            if all(
-                [header.get("IsTruncated", "false") == "false" for header in headers]
-            ):
+            if all(header.get("IsTruncated", "false") == "false" for header in headers):
                 break
             marker = tmp[-1]["Key"]
         return ret
@@ -488,11 +478,8 @@ def _refresh_buckets_cache_file(cache_file):
                                 bucket_name,
                             )
                             continue
-                        else:
-                            log.warning(
-                                "S3 Error! Do you have any files in your S3 bucket?"
-                            )
-                            return {}
+                        log.warning("S3 Error! Do you have any files in your S3 bucket?")
+                        return {}
 
             metadata[saltenv] = bucket_files_list
 
@@ -532,11 +519,8 @@ def _refresh_buckets_cache_file(cache_file):
                             bucket_name,
                         )
                         continue
-                    else:
-                        log.warning(
-                            "S3 Error! Do you have any files in your S3 bucket?"
-                        )
-                        return {}
+                    log.warning("S3 Error! Do you have any files in your S3 bucket?")
+                    return {}
 
             environments = [(os.path.dirname(k["Key"]).split("/", 1))[0] for k in files]
             environments = set(environments)
@@ -594,12 +578,10 @@ def _prune_deleted_files(metadata):
                 cached_files.add(meta["Key"])
 
     if log.isEnabledFor(logging.DEBUG):
-        import pprint
-
         log.debug("cached file list:\n%s", pprint.pformat(cached_files))
 
     for root in roots:
-        for base, dirs, files in os.walk(root):
+        for base, _, files in os.walk(root):
             for file_name in files:
                 path = os.path.join(base, file_name)
                 relpath = os.path.relpath(path, root)
@@ -769,7 +751,7 @@ def _get_file_from_s3(metadata, saltenv, bucket_name, path, cached_file_path):
         keyid,
         service_url,
         verify_ssl,
-        kms_keyid,
+        _,
         location,
         path_style,
         https_enable,
@@ -783,9 +765,7 @@ def _get_file_from_s3(metadata, saltenv, bucket_name, path, cached_file_path):
 
             if file_etag.find("-") == -1:
                 file_md5 = file_etag
-                cached_md5 = salt.utils.hashutils.get_hash(
-                    cached_file_path, S3_HASH_TYPE
-                )
+                cached_md5 = salt.utils.hashutils.get_hash(cached_file_path, S3_HASH_TYPE)
 
                 # hashes match we have a cache hit
                 if cached_md5 == file_md5:
@@ -795,9 +775,7 @@ def _get_file_from_s3(metadata, saltenv, bucket_name, path, cached_file_path):
             else:
                 cached_file_stat = os.stat(cached_file_path)
                 cached_file_size = cached_file_stat.st_size
-                cached_file_mtime = datetime.datetime.fromtimestamp(
-                    cached_file_stat.st_mtime
-                )
+                cached_file_mtime = datetime.datetime.fromtimestamp(cached_file_stat.st_mtime)
 
                 cached_file_lastmod = datetime.datetime.strptime(
                     file_meta["LastModified"], "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -811,7 +789,7 @@ def _get_file_from_s3(metadata, saltenv, bucket_name, path, cached_file_path):
                         "cached file mtime later than metadata last "
                         "modification time."
                     )
-                    ret = __utils__["s3.query"](
+                    ret = salt.utils.s3.query(
                         key=key,
                         keyid=keyid,
                         kms_keyid=keyid,
@@ -850,7 +828,7 @@ def _get_file_from_s3(metadata, saltenv, bucket_name, path, cached_file_path):
                             return
 
     # ... or get the file from S3
-    __utils__["s3.query"](
+    salt.utils.s3.query(
         key=key,
         keyid=keyid,
         kms_keyid=keyid,

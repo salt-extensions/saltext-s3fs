@@ -2,19 +2,21 @@ import os
 
 import boto3
 import pytest
+import salt.utils.files
+import salt.utils.hashutils
+import salt.utils.s3
 import yaml
 
 # moto must be imported before boto3
-from moto import mock_s3
+from moto import mock_aws
 
-import salt.fileserver.s3fs as s3fs
-import salt.utils.s3
+from saltext.s3fs.fileserver import s3fs
 
 
 @pytest.fixture
 def bucket():
-    with mock_s3():
-        yield "mybucket"
+    """Return a test bucket name."""
+    return "mybucket"
 
 
 @pytest.fixture(scope="module")
@@ -28,23 +30,11 @@ def aws_creds():
 
 
 @pytest.fixture(scope="function")
-def configure_loader_modules(tmp_path, bucket):
-    opts = {
-        "cachedir": tmp_path,
-        "s3.buckets": {"base": [bucket]},
-        "s3.location": "us-east-1",
-        "s3.s3_cache_expire": -1,
-    }
-    utils = {"s3.query": salt.utils.s3.query}
-
-    yield {s3fs: {"__opts__": opts, "__utils__": utils}}
-
-
-@pytest.fixture(scope="function")
 def s3(bucket, aws_creds):
-    conn = boto3.client("s3", **aws_creds)
-    conn.create_bucket(Bucket=bucket)
-    return conn
+    with mock_aws():
+        conn = boto3.client("s3", **aws_creds)
+        conn.create_bucket(Bucket=bucket)
+        yield conn
 
 
 def make_keys(bucket, conn, keys):
@@ -70,9 +60,17 @@ def verify_cache(bucket, expected):
             assert correct_content == content
 
 
-@pytest.mark.skip_on_fips_enabled_platform
+@mock_aws
 def test_update(bucket, s3):
     """Tests that files get downloaded from s3 to the local cache."""
+
+    # Set up __opts__ directly on the module
+    s3fs.__opts__ = {
+        "cachedir": "/tmp/test_cache",
+        "s3.buckets": {"base": [bucket]},
+        "s3.location": "us-east-1",
+        "s3.s3_cache_expire": -1,
+    }
 
     keys = {
         "top.sls": {"content": yaml.dump({"base": {"*": ["foo"]}})},
@@ -127,9 +125,17 @@ def test_update(bucket, s3):
     assert not os.path.exists(files_dir)
 
 
-@pytest.mark.skip_on_fips_enabled_platform
+@mock_aws
 def test_s3_hash(bucket, s3):
     """Verifies that s3fs hashes files correctly."""
+
+    # Set up __opts__ directly on the module
+    s3fs.__opts__ = {
+        "cachedir": "/tmp/test_cache",
+        "s3.buckets": {"base": [bucket]},
+        "s3.location": "us-east-1",
+        "s3.s3_cache_expire": -1,
+    }
 
     keys = {
         "top.sls": {"content": yaml.dump({"base": {"*": ["foo"]}})},
@@ -142,9 +148,7 @@ def test_s3_hash(bucket, s3):
 
     for key, item in keys.items():
         cached_file_path = s3fs._get_cached_file_name(bucket, "base", key)
-        item["hash"] = salt.utils.hashutils.get_hash(
-            cached_file_path, s3fs.S3_HASH_TYPE
-        )
+        item["hash"] = salt.utils.hashutils.get_hash(cached_file_path, s3fs.S3_HASH_TYPE)
         item["cached_file_path"] = cached_file_path
 
     load = {"saltenv": "base"}
@@ -157,8 +161,15 @@ def test_s3_hash(bucket, s3):
         assert item["hash"] == actual_hash["hsum"]
 
 
-@pytest.mark.skip_on_fips_enabled_platform
 def test_cache_round_trip(bucket):
+    # Set up __opts__ directly on the module
+    s3fs.__opts__ = {
+        "cachedir": "/tmp/test_cache",
+        "s3.buckets": {"base": [bucket]},
+        "s3.location": "us-east-1",
+        "s3.s3_cache_expire": -1,
+    }
+
     metadata = {"foo": "bar"}
     cache_file = s3fs._get_buckets_cache_filename()
     s3fs._write_buckets_cache_file(metadata, cache_file)
