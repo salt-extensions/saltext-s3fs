@@ -15,11 +15,7 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-<<<<<<< before updating
-          - {salt-version: "3006.19", python-version: "3.10"}
-=======
           - {salt-version: "3006.23", python-version: "3.10"}
->>>>>>> after updating
           - {salt-version: "3007.13", python-version: "3.10"}
 
     steps:
@@ -103,11 +99,7 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-<<<<<<< before updating
-          - {salt-version: "3006.19", python-version: "3.10"}
-=======
           - {salt-version: "3006.23", python-version: "3.10"}
->>>>>>> after updating
           - {salt-version: "3007.13", python-version: "3.10"}
 
     steps:
@@ -196,11 +188,7 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-<<<<<<< before updating
-          - {salt-version: "3006.19", python-version: "3.10"}
-=======
           - {salt-version: "3006.23", python-version: "3.10"}
->>>>>>> after updating
           - {salt-version: "3007.13", python-version: "3.10"}
 
     steps:
