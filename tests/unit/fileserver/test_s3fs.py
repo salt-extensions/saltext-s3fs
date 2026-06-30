@@ -1,4 +1,5 @@
 import os
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -12,9 +13,11 @@ try:
 except ImportError:
     HAS_BOTO = False
 
-import salt.fileserver.s3fs as s3fs
+import salt.utils.files
+import salt.utils.hashutils
 import salt.utils.s3
-from tests.support.mock import patch
+
+from saltext.s3fs.fileserver import s3fs
 
 pytestmark = [
     pytest.mark.skipif(not HAS_BOTO, reason="Missing library moto or boto3"),
@@ -153,9 +156,7 @@ def test_s3_hash(bucket, s3):
 
     for key, item in keys.items():
         cached_file_path = s3fs._get_cached_file_name(bucket, "base", key)
-        item["hash"] = salt.utils.hashutils.get_hash(
-            cached_file_path, s3fs.S3_HASH_TYPE
-        )
+        item["hash"] = salt.utils.hashutils.get_hash(cached_file_path, s3fs.S3_HASH_TYPE)
         item["cached_file_path"] = cached_file_path
 
     load = {"saltenv": "base"}
