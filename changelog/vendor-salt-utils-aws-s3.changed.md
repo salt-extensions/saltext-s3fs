@@ -1,0 +1,1 @@
+Vendored `salt.utils.aws` and `salt.utils.s3` into `saltext.s3fs.utils` from salt-core at commit `1223555eecb`. The s3fs fileserver no longer depends on these salt-core helpers, which exist in salt-core solely to feed this extension. A follow-up on saltstack/salt will remove `salt/utils/aws.py` and `salt/utils/s3.py` once a saltext-s3fs release carrying this change is published.
