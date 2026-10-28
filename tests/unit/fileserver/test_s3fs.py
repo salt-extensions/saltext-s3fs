@@ -4,7 +4,6 @@ import boto3
 import pytest
 import salt.utils.files
 import salt.utils.hashutils
-import salt.utils.s3
 import yaml
 
 # moto must be imported before boto3
